@@ -150,7 +150,7 @@ def carlini_wagner_l2(
             optimizer.zero_grad()
             f = f_fn(real, other, targeted)
             l2 = l2dist_fn(new_x, ox)
-            loss = (const * f + l2).sum()
+            loss = (const.flatten() * f + l2).sum()
             loss.backward()
             optimizer.step()
 

@@ -155,6 +155,9 @@ def carlini_wagner_l2(
             optimizer.step()
 
             # Update best results
+            logits = logits.detach()
+            l2 = l2.detach()
+            new_x = new_x.detach()
             for n, (l2_n, logits_n, new_x_n) in enumerate(zip(l2, logits, new_x)):
                 y_n = y[n]
                 succeeded = compare(logits_n, y_n, is_logits=True)

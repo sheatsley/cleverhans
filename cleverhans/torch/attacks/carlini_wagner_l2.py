@@ -223,7 +223,8 @@ def carlini_wagner_l2(
             .div(2)
             .unsqueeze(1)
         )
-        const[~not_bs_suc_and_1e9] *= 10
+        not_bs_suc_and_not_1e9 = (~bs_suceeded).logical_and(upper_bound >= 1e9)
+        const[not_bs_suc_and_not_1e9] *= 10
 
         """
         for n in range(len(x)):

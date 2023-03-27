@@ -108,15 +108,15 @@ def carlini_wagner_l2(
 
     # Initialize some values needed for binary search on const
     #### lower_bound = [0.0] * len(x)
-    lower_bound = torch.zeros(len(x))
+    lower_bound = torch.zeros(len(x), device=x.device)
     #### upper_bound = [1e10] * len(x)
-    upper_bound = torch.full([len(x)], 1e10)
+    upper_bound = torch.full([len(x)], 1e10, device=x.device)
     const = x.new_ones(len(x), 1) * initial_const
 
     #### o_bestl2 = [INF] * len(x)
-    o_bestl2 = torch.full([len(x)], INF)
+    o_bestl2 = torch.full([len(x)], INF, device=x.device)
     #### o_bestscore = [-1.0] * len(x)
-    o_bestscore = torch.full([len(x)], -1.0)
+    o_bestscore = torch.full([len(x)], -1.0, device=x.device)
     x = torch.clamp(x, clip_min, clip_max)
     ox = x.clone().detach()  # save the original x
     o_bestattack = x.clone().detach()
@@ -143,9 +143,9 @@ def carlini_wagner_l2(
     for outer_step in range(binary_search_steps):
         # Initialize some values needed for the inner loop
         #### bestl2 = [INF] * len(x)
-        bestl2 = torch.full([len(x)], INF)
+        bestl2 = torch.full([len(x)], INF, device=x.device)
         #### bestscore = [-1.0] * len(x)
-        bestscore = torch.full([len(x)], -1.0)
+        bestscore = torch.full([len(x)], -1.0, device=x.device)
 
         # Inner loop performing attack iterations
         for i in range(max_iterations):

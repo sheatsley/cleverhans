@@ -1,7 +1,6 @@
 """The CarliniWagnerL2 attack."""
 import torch
 
-
 INF = float("inf")
 
 
@@ -91,9 +90,14 @@ def carlini_wagner_l2(
 
         # Convert logits to predicted class if necessary
         if is_logits:
+            # pred_copy = pred.clone().detach()
+            # pred_copy[label] += -confidence if targeted else confidence
+            # pred = torch.argmax(pred_copy)
             pred_copy = pred.clone().detach()
-            pred_copy[label] += -confidence if targeted else confidence
-            pred = torch.argmax(pred_copy)
+            pred_copy[torch.arange(len(pred), device=pred.device), label] += (
+                -confidence if targeted else confidence
+            )
+            pred = torch.argmax(pred_copy, dim=1)
 
         return pred == label if targeted else pred != label
 
@@ -103,12 +107,16 @@ def carlini_wagner_l2(
         y = torch.argmax(pred, 1)
 
     # Initialize some values needed for binary search on const
-    lower_bound = [0.0] * len(x)
-    upper_bound = [1e10] * len(x)
+    #### lower_bound = [0.0] * len(x)
+    lower_bound = torch.zeros(len(x))
+    #### upper_bound = [1e10] * len(x)
+    upper_bound = torch.full([len(x)], 1e10)
     const = x.new_ones(len(x), 1) * initial_const
 
-    o_bestl2 = [INF] * len(x)
-    o_bestscore = [-1.0] * len(x)
+    #### o_bestl2 = [INF] * len(x)
+    o_bestl2 = torch.full([len(x)], INF)
+    #### o_bestscore = [-1.0] * len(x)
+    o_bestscore = torch.full([len(x)], -1.0)
     x = torch.clamp(x, clip_min, clip_max)
     ox = x.clone().detach()  # save the original x
     o_bestattack = x.clone().detach()
@@ -134,8 +142,10 @@ def carlini_wagner_l2(
     # Outer loop performing binary search on const
     for outer_step in range(binary_search_steps):
         # Initialize some values needed for the inner loop
-        bestl2 = [INF] * len(x)
-        bestscore = [-1.0] * len(x)
+        #### bestl2 = [INF] * len(x)
+        bestl2 = torch.full([len(x)], INF)
+        #### bestscore = [-1.0] * len(x)
+        bestscore = torch.full([len(x)], -1.0)
 
         # Inner loop performing attack iterations
         for i in range(max_iterations):
@@ -158,6 +168,20 @@ def carlini_wagner_l2(
             logits = logits.detach()
             l2 = l2.detach()
             new_x = new_x.detach()
+            succeeded = compare(logits, y, is_logits=True)
+            preds = logits.max(1).values
+            update = (l2 < o_bestl2).logical_and(succeeded)
+            o_bestl2[update] = l2[update]
+            o_bestscore[update] = preds[update]
+            o_bestattack[update] = new_x[update]
+            # l2 < o_bestl2 implies l2 < bestl2 so we modify inner loop variables too
+            # bestl2[update] = l2[update]
+            # bestscore[update] = preds[update]
+            loop_update = (l2 < bestl2).logical_and(succeeded)
+            bestl2[loop_update] = l2[loop_update]
+            bestscore[loop_update] = preds[loop_update]
+
+            """
             for n, (l2_n, logits_n, new_x_n) in enumerate(zip(l2, logits, new_x)):
                 y_n = y[n]
                 succeeded = compare(logits_n, y_n, is_logits=True)
@@ -172,8 +196,36 @@ def carlini_wagner_l2(
                 elif l2_n < bestl2[n] and succeeded:
                     bestl2[n] = l2_n
                     bestscore[n] = torch.argmax(logits_n)
+            """
 
         # Binary search step
+        bs_suceeded = compare(bestscore, y).logical_and(bestscore != -1)
+
+        # Success, divide const by two
+        upper_bound[bs_suceeded] = upper_bound[bs_suceeded].min(
+            const[bs_suceeded].squeeze()
+        )
+        bs_suc_and_1e9 = bs_suceeded.logical_and(upper_bound < 1e9)
+        const[bs_suc_and_1e9] = (
+            (lower_bound[bs_suc_and_1e9] + upper_bound[bs_suc_and_1e9])
+            .div(2)
+            .unsqueeze(1)
+        )
+
+        # Failure, either multiply by 10 if no solution found yet
+        # or do binary search with the known upper bound
+        lower_bound[~bs_suceeded] = lower_bound[~bs_suceeded].max(
+            const[~bs_suceeded].squeeze()
+        )
+        not_bs_suc_and_1e9 = (~bs_suceeded).logical_and(upper_bound < 1e9)
+        const[not_bs_suc_and_1e9] = (
+            (lower_bound[not_bs_suc_and_1e9] + upper_bound[not_bs_suc_and_1e9])
+            .div(2)
+            .unsqueeze(1)
+        )
+        const[~not_bs_suc_and_1e9] *= 10
+
+        """
         for n in range(len(x)):
             y_n = y[n]
 
@@ -190,6 +242,7 @@ def carlini_wagner_l2(
                     const[n] = (lower_bound[n] + upper_bound[n]) / 2
                 else:
                     const[n] *= 10
+        """
 
     return o_bestattack.detach()
 
